@@ -2,7 +2,7 @@
   "profiles": {
     "Intent.NuGetReferenceUpdater": {
       "commandName": "Project",
-      "commandLineArgs": "--directory C:\\Dev\\Intent.NuGetReferenceUpdater\\Intent.NuGetReferenceUpdater\\Working\\"
+      "commandLineArgs": "--directory C:\\Dev\\Intent.Modules.NET\\"
     }
   }
 }

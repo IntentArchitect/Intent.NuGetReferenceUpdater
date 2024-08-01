@@ -1,8 +1,11 @@
-﻿using Intent.NuGetReferenceUpdater.NuGetConfig;
+﻿using Humanizer;
+using Intent.NuGetReferenceUpdater.NuGetConfig;
 using NuGet.Versioning;
 using System;
 using System.Collections.Generic;
+using System.CommandLine;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -116,7 +119,7 @@ namespace Intent.NuGetReferenceUpdater
                 {
                     await UpdateReleaseNotesAsync(directory, releaseVersion, changedjsonFile, cancellationToken);
                 }
-                //await PersistNugetPackageJsonFileAsync(changedjsonFile, cancellationToken);
+                await PersistNugetPackageJsonFileAsync(changedjsonFile, cancellationToken);
             }
         }
 
@@ -144,7 +147,7 @@ namespace {@namespace}
             foreach (var package in  changedjsonFile.Packages)
             {
                 content.AppendLine($@"
-        public static NugetPackageInfo SerilogAspNetCore(IOutputTarget outputTarget) => new(
+        public static NugetPackageInfo {ToCSharpIdentifier(package.Name)}(IOutputTarget outputTarget) => new(
             name: ""{package.Name}"",
             version: outputTarget.GetMaxNetAppVersion() switch
             {{");
@@ -156,6 +159,121 @@ namespace {@namespace}
 
             await File.WriteAllTextAsync(Path.Combine( directoy, "NugetPackages.cs"), content.ToString(), cancellationToken);
         }
+
+        public static string ToCSharpIdentifier(string identifier)
+        {
+            if (string.IsNullOrWhiteSpace(identifier))
+            {
+                return string.Empty;
+            }
+
+            // https://docs.microsoft.com/dotnet/csharp/fundamentals/coding-style/identifier-names
+            // - Identifiers must start with a letter, or _.
+            // - Identifiers may contain Unicode letter characters, decimal digit characters,
+            //   Unicode connecting characters, Unicode combining characters, or Unicode formatting
+            //   characters. For more information on Unicode categories, see the Unicode Category
+            //   Database. You can declare identifiers that match C# keywords by using the @ prefix
+            //   on the identifier. The @ is not part of the identifier name. For example, @if
+            //   declares an identifier named if. These verbatim identifiers are primarily for
+            //   interoperability with identifiers declared in other languages.
+
+            identifier = identifier
+                .Replace("#", "Sharp")
+                .Replace("&", "And");
+
+            var asCharArray = identifier.ToCharArray();
+            for (var i = 0; i < asCharArray.Length; i++)
+            {
+                // Underscore character is allowed
+                if (asCharArray[i] == '_')
+                {
+                    continue;
+                }
+
+                switch (char.GetUnicodeCategory(asCharArray[i]))
+                {
+                    case UnicodeCategory.DecimalDigitNumber:
+                    case UnicodeCategory.LetterNumber:
+                    case UnicodeCategory.LowercaseLetter:
+                    case UnicodeCategory.ModifierLetter:
+                    case UnicodeCategory.OtherLetter:
+                    case UnicodeCategory.TitlecaseLetter:
+                    case UnicodeCategory.UppercaseLetter:
+                    case UnicodeCategory.Format:
+                        break;
+                    case UnicodeCategory.ClosePunctuation:
+                    case UnicodeCategory.ConnectorPunctuation:
+                    case UnicodeCategory.Control:
+                    case UnicodeCategory.CurrencySymbol:
+                    case UnicodeCategory.DashPunctuation:
+                    case UnicodeCategory.EnclosingMark:
+                    case UnicodeCategory.FinalQuotePunctuation:
+                    case UnicodeCategory.InitialQuotePunctuation:
+                    case UnicodeCategory.LineSeparator:
+                    case UnicodeCategory.MathSymbol:
+                    case UnicodeCategory.ModifierSymbol:
+                    case UnicodeCategory.NonSpacingMark:
+                    case UnicodeCategory.OpenPunctuation:
+                    case UnicodeCategory.OtherNotAssigned:
+                    case UnicodeCategory.OtherNumber:
+                    case UnicodeCategory.OtherPunctuation:
+                    case UnicodeCategory.OtherSymbol:
+                    case UnicodeCategory.ParagraphSeparator:
+                    case UnicodeCategory.PrivateUse:
+                    case UnicodeCategory.SpaceSeparator:
+                    case UnicodeCategory.SpacingCombiningMark:
+                    case UnicodeCategory.Surrogate:
+                        asCharArray[i] = ' ';
+                        break;
+                    default:
+                        asCharArray[i] = ' ';
+                        break;
+                }
+            }
+
+            identifier = new string(asCharArray);
+
+            // Replace double spaces
+            while (identifier.Contains("  "))
+            {
+                identifier = identifier.Replace("  ", " ");
+            }
+
+            identifier = string.Concat(identifier
+                .Split(' ')
+                .Where(element => !string.IsNullOrWhiteSpace(element))
+                .Select((element, index) => index == 0
+                    ? element
+                    : element.Pascalize()));
+
+            var leadingUnderscores = string.Empty;
+            for (var i = 0; i < identifier.Length; i++)
+            {
+                if (identifier[i] == '_')
+                {
+                    continue;
+                }
+
+                leadingUnderscores = identifier[..i];
+                identifier = identifier[i..];
+                break;
+            }
+
+            if (!char.IsUpper(identifier[0]))
+            {
+                identifier = $"{char.ToUpperInvariant(identifier[0])}{identifier[1..]}";
+            }
+
+            identifier = $"{leadingUnderscores}{identifier}";
+
+            if (char.IsNumber(identifier[0]))
+            {
+                identifier = $"_{identifier}";
+            }
+
+            return identifier;
+        }
+
 
         private async Task UpdateReleaseNotesAsync(string directoy, string releaseVersion, NuGetDependencyConfig changedjsonFile, CancellationToken cancellationToken)
         {
