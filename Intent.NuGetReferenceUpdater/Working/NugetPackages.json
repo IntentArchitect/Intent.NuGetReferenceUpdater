@@ -1,0 +1,38 @@
+{
+  "packages": [
+    {
+      "name": "Serilog.AspNetCore",
+      "versions": [
+        {
+          "framework": "8.0",
+          "version": "8.0.2"
+        },
+        {
+          "framework": "7.0",
+          "version": "8.0.2"
+        },
+        {
+          "framework": "6.0",
+          "version": "8.0.2"
+        },
+        {
+          "framework": "5.0",
+          "version": "6.1.0"
+        },
+        {
+          "framework": "3.1",
+          "version": "6.1.0"
+        }
+      ]
+    },
+    {
+      "name": "serilog.sinks.graylog",
+      "versions": [
+        {
+          "framework": "7.0",
+          "version": "3.1.1"
+        }
+      ]
+    }
+  ]
+}
