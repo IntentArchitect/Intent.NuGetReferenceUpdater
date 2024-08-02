@@ -2,6 +2,7 @@
 using System.CommandLine.Binding;
 using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
+using System.IO;
 using System.Reflection;
 using Humanizer;
 
@@ -18,19 +19,21 @@ namespace Intent.NuGetReferenceUpdater
             {
                 new Option<string>(
                     name: OptionName("Directory"),
-                    description: "Directory to scan for NugetPacakges.json")
-,
+                    description: "Directory to scan for NugetPacakges.json"),
+                new Option<bool>(
+                    name: OptionName("ForceCodeUpdates"),
+                    description: "Update module files NugetPacakes.cs even if no new package versions")
             };
 
             rootCommand.SetHandler(
                 handle: async (
-                    string? directory
+                    string? directory,
+                    bool forceCodeUpdates
                     ) =>
                 {
                     if (directory == null)
                         throw new Exception($"{OptionName("Directory")} is required.");
-
-                    var updater = new FileUpdater();
+                    var updater = new FileUpdater(forceCodeUpdates == true);
                     await updater.UpdateFilesAsync(directory);
                 },
                 symbols: Enumerable.Empty<IValueDescriptor>()

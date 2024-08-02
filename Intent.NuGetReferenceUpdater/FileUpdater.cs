@@ -21,9 +21,11 @@ namespace Intent.NuGetReferenceUpdater
     {
         private const string Filename = "NugetPackages.json";
         private readonly JsonSerializerOptions _serialziationOptions;
+        private readonly bool _forceUpdates;
 
-        public FileUpdater()
+        public FileUpdater(bool forceUpdates)
         {
+            _forceUpdates = forceUpdates;
             _serialziationOptions = new JsonSerializerOptions
             {
                 WriteIndented = true,
@@ -39,7 +41,7 @@ namespace Intent.NuGetReferenceUpdater
 
             await UpdateNuGetPackages(consolidation.Packages);
 
-            var changedFiles = consolidation.JsonFiles.Where(f => f.Changed);
+            var changedFiles = consolidation.JsonFiles.Where(f => _forceUpdates || ( !_forceUpdates && f.Changed));
 
             await UpdateModuleFiles(changedFiles, cancellationToken);
 
