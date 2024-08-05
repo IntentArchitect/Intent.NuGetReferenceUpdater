@@ -2,7 +2,7 @@
   "profiles": {
     "Intent.NuGetReferenceUpdater": {
       "commandName": "Project",
-      "commandLineArgs": "--directory C:\\Dev\\Intent.Modules.NET\\"
+      "commandLineArgs": "--directory C:\\Dev\\Intent.Modules.NET\\Modules\\Intent.Modules.EntityFrameworkCore --force-code-updates true --skip-nuget-check true --suppress-versioning true"
     }
   }
 }

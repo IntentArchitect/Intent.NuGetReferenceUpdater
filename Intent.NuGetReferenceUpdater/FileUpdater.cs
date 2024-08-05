@@ -22,9 +22,13 @@ namespace Intent.NuGetReferenceUpdater
         private const string Filename = "NugetPackages.json";
         private readonly JsonSerializerOptions _serialziationOptions;
         private readonly bool _forceUpdates;
+        private readonly bool _suppressVersioning;
+        private readonly bool _skipNugetCheck;
 
-        public FileUpdater(bool forceUpdates)
+        public FileUpdater(bool forceUpdates, bool suppressVersioning, bool skipNugetCheck)
         {
+            _skipNugetCheck = skipNugetCheck;
+            _suppressVersioning = suppressVersioning;
             _forceUpdates = forceUpdates;
             _serialziationOptions = new JsonSerializerOptions
             {
@@ -39,7 +43,10 @@ namespace Intent.NuGetReferenceUpdater
 
             var consolidation = await ConsolidateNugetRequestsAcrossFiles(directory);
 
-            await UpdateNuGetPackages(consolidation.Packages);
+            if (!_skipNugetCheck)
+            { 
+                await UpdateNuGetPackages(consolidation.Packages);
+            }
 
             var changedFiles = consolidation.JsonFiles.Where(f => _forceUpdates || ( !_forceUpdates && f.Changed));
 
@@ -116,10 +123,13 @@ namespace Intent.NuGetReferenceUpdater
             {
                 var directory = Path.GetDirectoryName(changedjsonFile.Filename)!;
                 await OverwriteNugetPackagesCSFileAsync(directory, changedjsonFile, cancellationToken);
-                var releaseVersion = await UpdateIModSpecAsync(directory, changedjsonFile, cancellationToken);
-                if (releaseVersion != null)
+                if (!_suppressVersioning)
                 {
-                    await UpdateReleaseNotesAsync(directory, releaseVersion, changedjsonFile, cancellationToken);
+                    var releaseVersion = await UpdateIModSpecAsync(directory, changedjsonFile, cancellationToken);
+                    if (releaseVersion != null)
+                    {
+                        await UpdateReleaseNotesAsync(directory, releaseVersion, changedjsonFile, cancellationToken);
+                    }
                 }
                 await PersistNugetPackageJsonFileAsync(changedjsonFile, cancellationToken);
             }
@@ -139,7 +149,8 @@ namespace Intent.NuGetReferenceUpdater
                 @namespace = new DirectoryInfo(directoryPath).Name;
             }
             StringBuilder content = new();
-            content.AppendLine($@"using Intent.Engine;
+            content.AppendLine($@"using System;
+using Intent.Engine;
 using Intent.Modules.Common.VisualStudio;
 
 namespace {@namespace}
@@ -148,6 +159,10 @@ namespace {@namespace}
     {{");
             foreach (var package in  changedjsonFile.Packages)
             {
+                if (!string.IsNullOrEmpty(package.Comment))
+                {
+                    content.AppendLine($"        //{package.Comment}");
+                }
                 content.AppendLine($@"
         public static NugetPackageInfo {ToCSharpIdentifier(package.Name)}(IOutputTarget outputTarget) => new(
             name: ""{package.Name}"",
@@ -159,6 +174,7 @@ namespace {@namespace}
             content.AppendLine(@"    }
 }");
 
+            Console.WriteLine("Updating NugetPackages.cs");
             await File.WriteAllTextAsync(Path.Combine( directoy, "NugetPackages.cs"), content.ToString(), cancellationToken);
         }
 
@@ -330,7 +346,7 @@ namespace {@namespace}
                 }
             }
 
-
+            Console.WriteLine($"Updating realease notes");
             await File.WriteAllTextAsync(releaseNotesFileName, sb.ToString(), cancellationToken);
         }
 
@@ -381,6 +397,8 @@ namespace {@namespace}
                 newVersion = new NuGetVersion(version.Major, version.Minor, version.Patch + 1, "pre.0");
             }
             versionNode.InnerText = newVersion.ToString();
+
+            Console.WriteLine($"Updating .imodpsec : {newVersion.ToString()}");
 
             // Output the modified XML content with original formatting preserved
             using (var fileWriter = File.OpenWrite(imodspecFile))
@@ -441,18 +459,15 @@ namespace {@namespace}
 
         private static void AddVerions(StringBuilder content, Package package)
         {
-            for (var i = package.Versions.Count - 1; i >= 0; i--)
+            foreach (var current in package.Versions)
             {
-                var current = package.Versions[i];
-                if (i == 0)
+                if (!string.IsNullOrEmpty(current.Comment))
                 {
-                    content.AppendLine($"                _ => \"{current.Version}\",");
+                    content.AppendLine($"                //{current.Comment}");
                 }
-                else
-                {
-                    content.AppendLine($"                ({current.Framework.Replace(".", ", ")}) => \"{current.Version}\",");
-                }
+                content.AppendLine($"                (>= {current.Framework.Replace(".", ", ")}) => \"{current.Version}\",");
             }
+            content.AppendLine($"                _ => throw new Exception($\"Unsupported Framework `{{outputTarget.GetMaxNetAppVersion().Major}}` for NuGet package '{package.Name}'\")");
         }
     }
 }

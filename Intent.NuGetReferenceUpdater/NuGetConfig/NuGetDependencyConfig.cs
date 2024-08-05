@@ -27,7 +27,7 @@ namespace Intent.NuGetReferenceUpdater.NuGetConfig
         {
             foreach (var package in Packages)
             {
-                package.Versions.Sort((v1, v2) => NuGetVersion.Parse(v2.Framework).CompareTo(NuGetVersion.Parse(v1.Framework)));
+                package.Versions.Sort((v1, v2) => NuGetVersion.Parse(v1.Framework).CompareTo(NuGetVersion.Parse(v2.Framework)));
             }
         }
 
@@ -60,6 +60,8 @@ namespace Intent.NuGetReferenceUpdater.NuGetConfig
         }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Comment { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? Locked { get; set; }
         [JsonIgnore]
         public string? OldVersion { get; set; }
@@ -73,6 +75,8 @@ namespace Intent.NuGetReferenceUpdater.NuGetConfig
         }
 
         public string Name { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Comment { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? Locked { get; set; }
         public List<PackageVersion> Versions { get; set; }

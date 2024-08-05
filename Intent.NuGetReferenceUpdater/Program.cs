@@ -22,18 +22,26 @@ namespace Intent.NuGetReferenceUpdater
                     description: "Directory to scan for NugetPacakges.json"),
                 new Option<bool>(
                     name: OptionName("ForceCodeUpdates"),
-                    description: "Update module files NugetPacakes.cs even if no new package versions")
+                    description: "Update module files NugetPacakes.cs even if no new package versions"),
+                new Option<bool>(
+                    name: OptionName("SuppressVersioning"),
+                    description: "Don't update .modspec and release notes"),
+                new Option<bool>(
+                    name: OptionName("SkipNugetCheck"),
+                    description: "Don't check NuGet for new versions"),
             };
 
             rootCommand.SetHandler(
                 handle: async (
                     string? directory,
-                    bool forceCodeUpdates
+                    bool forceCodeUpdates,
+                    bool suppressVersioning,
+                    bool skipNugetCheck
                     ) =>
                 {
                     if (directory == null)
                         throw new Exception($"{OptionName("Directory")} is required.");
-                    var updater = new FileUpdater(forceCodeUpdates == true);
+                    var updater = new FileUpdater(forceCodeUpdates == true, suppressVersioning == true, skipNugetCheck == true);
                     await updater.UpdateFilesAsync(directory);
                 },
                 symbols: Enumerable.Empty<IValueDescriptor>()
