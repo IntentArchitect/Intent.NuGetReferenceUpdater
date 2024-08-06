@@ -121,6 +121,7 @@ namespace Intent.NuGetReferenceUpdater
         {
             foreach (var changedjsonFile in changedFiles)
             {
+                changedjsonFile.Sort();
                 var directory = Path.GetDirectoryName(changedjsonFile.Filename)!;
                 await OverwriteNugetPackagesCSFileAsync(directory, changedjsonFile, cancellationToken);
                 if (!_suppressVersioning)
@@ -164,7 +165,7 @@ namespace {@namespace}
                     content.AppendLine($"        //{package.Comment}");
                 }
                 content.AppendLine($@"
-        public static NugetPackageInfo {ToCSharpIdentifier(package.Name)}(IOutputTarget outputTarget) => new(
+        public static NugetPackageInfo {ToCSharpIdentifier(package.Name)}(IOutputTarget outputTarget) => new NugetPackageInfo(
             name: ""{package.Name}"",
             version: outputTarget.GetMaxNetAppVersion() switch
             {{");

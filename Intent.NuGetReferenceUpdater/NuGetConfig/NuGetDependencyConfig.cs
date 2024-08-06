@@ -27,7 +27,7 @@ namespace Intent.NuGetReferenceUpdater.NuGetConfig
         {
             foreach (var package in Packages)
             {
-                package.Versions.Sort((v1, v2) => NuGetVersion.Parse(v1.Framework).CompareTo(NuGetVersion.Parse(v2.Framework)));
+                package.Versions.Sort((v1, v2) => NuGetVersion.Parse(v2.Framework).CompareTo(NuGetVersion.Parse(v1.Framework)));
             }
         }
 
