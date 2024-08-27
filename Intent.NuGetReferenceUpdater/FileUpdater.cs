@@ -10,296 +10,274 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
-using System.Xml.Linq;
+using Intent.IArchitect.Agent.Persistence.Model;
+using Intent.IArchitect.Common.Publishing;
+using Serilog;
+
 using static Intent.NuGetReferenceUpdater.NuGetApi;
+using static System.Net.Mime.MediaTypeNames;
+using System.CommandLine.Parsing;
+using System.Diagnostics;
+using System.IO;
+using NuGet.Frameworks;
+using System.Xml.Linq;
+using Intent.IArchitect.Agent.Persistence.Model.Common;
 
 namespace Intent.NuGetReferenceUpdater
 {
     internal class FileUpdater
     {
-        private const string Filename = "NugetPackages.json";
-        private readonly JsonSerializerOptions _serialziationOptions;
-        private readonly bool _forceUpdates;
-        private readonly bool _suppressVersioning;
-        private readonly bool _skipNugetCheck;
+        private readonly string _islnfileName;
+        private readonly ParseResult _parse;
+        private Dictionary<string, List<NugetVersionInfo>> _nuGetCache;
 
-        public FileUpdater(bool forceUpdates, bool suppressVersioning, bool skipNugetCheck)
+        private const string PackageVersionSettingsStereoTypeId = "7af88c37-ce54-49fc-b577-bde869c23462";
+        private const string PackageElementTypeId = "f747cc37-29ee-488a-8dbe-755e856a842d";
+        private const string PackageVersionElementTypeId = "231f8cf8-517b-4801-9682-991d22f4e662";
+        private const string PackageSettingsStereoTypeId = "265221a5-779c-46c9-a367-8b07b435803b";       
+
+        public FileUpdater(
+            ParseResult parse,
+            string userName,
+            string password,
+            string islnfileName
+)
         {
-            _skipNugetCheck = skipNugetCheck;
-            _suppressVersioning = suppressVersioning;
-            _forceUpdates = forceUpdates;
-            _serialziationOptions = new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            };
+            _parse = parse; 
+            _islnfileName = islnfileName;
+            _nuGetCache = new Dictionary<string, List<NugetVersionInfo>>();
         }
-
-        public async Task UpdateFilesAsync(string directory, CancellationToken cancellationToken = default)
+        public async Task UpdateFilesAsync(string resumeid = null, CancellationToken cancellationToken = default)
         {
+            DomainPublisher.Set(new DummyDomainPublisher());
 
-            var consolidation = await ConsolidateNugetRequestsAcrossFiles(directory);
+            var loggerConfiguration = new LoggerConfiguration();
+            loggerConfiguration = loggerConfiguration
+                .WriteTo.Console()
+                .Filter.ByExcluding(@event =>
+                    @event.MessageTemplate.Text == "'\\' detected in path, please rather use platform agnostic '/': {path}");
 
-            if (!_skipNugetCheck)
-            { 
-                await UpdateNuGetPackages(consolidation.Packages);
+            loggerConfiguration = loggerConfiguration.MinimumLevel.Debug();
+            Log.Logger = loggerConfiguration.CreateLogger();
+
+            var islnName = _islnfileName;
+
+            if (islnName is null)
+            {
+                throw new FileNotFoundException(
+                    $"Could not 'isln' : ({islnName})");
+
             }
 
-            var changedFiles = consolidation.JsonFiles.Where(f => _forceUpdates || ( !_forceUpdates && f.Changed));
-
-            await UpdateModuleFiles(changedFiles, cancellationToken);
-
+            await UpdateApplicationNuGetPackages(islnName, resumeid, cancellationToken);
         }
 
-        private async Task<Consolidation> ConsolidateNugetRequestsAcrossFiles(string directory)
+        private async Task UpdateApplicationNuGetPackages(string? islnName, string? resumeId, CancellationToken cancellationToken = default)
         {
-            if (!Directory.Exists(directory))
+
+            var solution = SolutionPersistable.Load(islnName);
+            if (solution == null) throw new Exception("Loaded isln file is null.");
+
+            foreach (var application in solution.GetApplications())
             {
-                throw new Exception($"Directory does not exist : {directory}");
-
-            }
-            Dictionary<string, ConsolidatedNugetUpdate> consolidatedNugetUpdates = new();
-            List<NuGetDependencyConfig> jsonFiles = new();
-
-            //Consolidate Nuget Requests
-            var fileNames = Directory.GetFiles(directory, Filename, SearchOption.AllDirectories);
-            foreach (string file in fileNames)
-            {
-                Console.WriteLine($"Gathering NuGet Dependencies : {file}");
-                NuGetDependencyConfig config;
-                var content = await File.ReadAllTextAsync(file);
-                try
+                if (resumeId is not null)
                 {
-                    config = JsonSerializer.Deserialize<NuGetDependencyConfig>(content, _serialziationOptions);
-                    config.Initialize(file);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Unable to deserialize : {file}{Environment.NewLine}{ex.GetBaseException().Message}");
-                    continue;
-                }
-
-                jsonFiles.Add(config);
-                foreach (var package in config.Packages)
-                {
-                    if (!consolidatedNugetUpdates.TryGetValue(package.Name, out var update))
-                    {
-                        update = new ConsolidatedNugetUpdate(package.Name, []);
-                        consolidatedNugetUpdates.Add(package.Name, update);
-                    }
-                    update.Modules.Add(package);
-                }
-            }
-            return new Consolidation(consolidatedNugetUpdates.Values.ToList(), jsonFiles);
-        }
-        private record Consolidation(List<ConsolidatedNugetUpdate> Packages, List<NuGetDependencyConfig> JsonFiles);
-        private record ConsolidatedNugetUpdate(string PackageName, List<Package> Modules);
-
-        private static async Task UpdateNuGetPackages(IList<ConsolidatedNugetUpdate> consolidatedNugetUpdates)
-        {
-            foreach (var update in consolidatedNugetUpdates)
-            {
-                var versionInfo = await NuGetApi.GetLatestVersionsForFrameworksAsync(update.PackageName);
-                foreach (var package in update.Modules)
-                {
-                    if (package.Locked == true)
+                    if (application.Id != resumeId)
                     {
                         continue;
                     }
-                    if (UpdatePackageInfo(package, versionInfo))
+                    else
                     {
-                        package.Changed();
+                        resumeId = null;
+                    }
+
+                }
+                Console.WriteLine($"Checking application : {application.Name}");
+
+                var designer = application.GetDesigners().SingleOrDefault(x => x.Name == "Module Builder");
+                if (designer == null) continue;
+
+                var designerPackages = designer
+                    .GetPackages(includeExternal: false, packageFileOnly: true)
+                    .ToArray();
+                if (designerPackages.Length != 1)
+                {
+                    throw new Exception($"Multiple packages found, must be specified when more than one package exists in the designer");
+                }
+
+                var package = designerPackages[0];
+                var imodspec = Directory.GetFiles(application.GetOutputLocation(), $"{package.Name}.imodspec", SearchOption.AllDirectories).FirstOrDefault();
+
+                if (imodspec == null)
+                {
+                    throw new Exception($"Can't find {package.Name}.imodspec");
+                }
+
+                if (package == null) throw new Exception("Package is null.");
+
+                if (!package.IsFullyLoaded)
+                {
+                    package.Load();
+                }
+                //NuGet Packages
+                var packages = package.Classes.Where(c => c.SpecializationTypeId == PackageElementTypeId);
+                if (!packages.Any())
+                {
+                    continue;
+                }
+
+                Console.WriteLine("Checking there is no pending changes");
+                await RunSFCLI("ensure-no-outstanding-changes", application.Id, cancellationToken);
+
+                bool changes = false;
+                foreach (var child in packages)
+                {
+                    if (child == null) continue; 
+
+                    //Ignore Locked Packages
+                    if (child.Stereotypes.FirstOrDefault(s => s.DefinitionId == PackageSettingsStereoTypeId)?.Properties.FirstOrDefault(p => p.Name == "Locked")?.Value == "true")
+                    {
+                        continue;
+                    }
+                    var packageName = child.Name;
+                    if (!_nuGetCache.TryGetValue(packageName, out var nugetDetails))
+                    {
+                        //Cache NuGet results in case different modules have the same packages no need to request same data given api limiting
+                        nugetDetails = await NuGetApi.GetLatestVersionsForFrameworksAsync(packageName);
+                        _nuGetCache[packageName] = nugetDetails;
+                    }
+                    foreach (var x in nugetDetails)
+                    {
+                        var updateDetails = GetVersionDetails(child.ChildElements, x);
+
+                        //Version already exists and (is locked or is the current lastest version)
+                        if (updateDetails != null && (updateDetails.Locked || updateDetails.Element.Name == updateDetails.PackageVersion))
+                        {
+                            continue;
+                        }
+                        Console.WriteLine($"Updating NuGet Package : {packageName}({application.Name})");
+                        changes = true;
+
+                        if (updateDetails == null)
+                        {
+                            var newVersion = CreatePackageVersion(child, x);
+                            child.AddElement(newVersion);
+                        }
+                        else
+                        {
+                            updateDetails.Element.Name = updateDetails.PackageVersion;
+                        }
                     }
                 }
-            }
-        }
-
-        private async Task UpdateModuleFiles(IEnumerable<NuGetDependencyConfig> changedFiles, CancellationToken cancellationToken)
-        {
-            foreach (var changedjsonFile in changedFiles)
-            {
-                changedjsonFile.Sort();
-                var directory = Path.GetDirectoryName(changedjsonFile.Filename)!;
-                await OverwriteNugetPackagesCSFileAsync(directory, changedjsonFile, cancellationToken);
-                if (!_suppressVersioning)
+                if (changes)
                 {
-                    var releaseVersion = await UpdateIModSpecAsync(directory, changedjsonFile, cancellationToken);
+                    package.Save();
+                    Console.WriteLine("Applying pending changes");
+                    await RunSFCLI("apply-pending-changes", application.Id, cancellationToken);
+
+                    Console.WriteLine($"Updating versions info : {imodspec}");
+                    var releaseVersion = await UpdateIModSpecAsync(imodspec, null, default);
                     if (releaseVersion != null)
                     {
-                        await UpdateReleaseNotesAsync(directory, releaseVersion, changedjsonFile, cancellationToken);
+                        await UpdateReleaseNotesAsync(Path.GetDirectoryName(imodspec), releaseVersion, null, "- Improvement: Updated NuGet package versions.", default);
                     }
+
                 }
-                await PersistNugetPackageJsonFileAsync(changedjsonFile, cancellationToken);
             }
         }
 
-        private async Task OverwriteNugetPackagesCSFileAsync(string directoy, NuGetDependencyConfig changedjsonFile, CancellationToken cancellationToken)
+        private static ElementPersistable CreatePackageVersion(ElementPersistable child, NugetVersionInfo x)
         {
-            string @namespace;
-            var files = Directory.GetFiles(directoy, "*.csproj");
-            if (files.Length > 0) 
+            var newVersion = new ElementPersistable()
             {
-                @namespace = Path.GetFileNameWithoutExtension(files[0]);
-            }
+                Id = Guid.NewGuid().ToString().ToLower(),
+                SpecializationType = "Package Version",
+                SpecializationTypeId = PackageVersionElementTypeId,
+                Name = x.PackageVersion.ToString(),
+                ParentFolderId = child.Id,
+            };
+            var packageVersionSettingsStereotype = new StereotypePersistable()
+            {
+                DefinitionId = PackageVersionSettingsStereoTypeId,
+                Name = "Package Version Settings",
+                DefinitionPackageId = "f2bfb0f7-d304-466f-b923-021d4016b48d",
+                DefinitionPackageName = "Intent.ModuleBuilder.CSharp",
+                Properties = new List<StereotypePropertyPersistable>()
+                    {
+                        new StereotypePropertyPersistable()
+                        {
+                            Id = "b01cea92-0ca1-4dbe-acab-d0f52b39e003",
+                            Name = "Minimum Target Framework",
+                            Value = x.FrameworkVersion.DotNetFrameworkName,
+                            IsActive = true,
+                        },
+                        new StereotypePropertyPersistable()
+                        {
+                            Id = "d00692b1-6d17-4f1e-9386-a1d0d3ab7b57",
+                            Name = "Locked",
+                            Value = "false",
+                            IsActive = true,
+                        }
+                    }
+            };
+
+            newVersion.Stereotypes.Add(packageVersionSettingsStereotype);
+            return newVersion;
+        }
+
+        private VersionDetails? GetVersionDetails(IEnumerable<ElementPersistable> children, NugetVersionInfo nugetInfo)
+        {
+            var versionElement = children.FirstOrDefault(x => x.SpecializationTypeId == PackageVersionElementTypeId && 
+                x.Stereotypes.FirstOrDefault(s => s.DefinitionId == PackageVersionSettingsStereoTypeId)?.Properties.FirstOrDefault(p => p.Name == "Minimum Target Framework")?.Value == nugetInfo.FrameworkVersion.DotNetFrameworkName);
+            if (versionElement is null)
+                return null;
+            bool locked = versionElement.Stereotypes.FirstOrDefault(s => s.DefinitionId == PackageVersionSettingsStereoTypeId)?.Properties.FirstOrDefault(p => p.Name == "Locked")?.Value == "true";
+            return new VersionDetails(nugetInfo.PackageVersion.ToString(), locked, versionElement);
+        }
+
+        private record VersionDetails(string PackageVersion, bool Locked, ElementPersistable Element );
+
+
+        private async Task RunSFCLI(string command, string applicationId, CancellationToken cancellationToken = default)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "intent-cli",
+                Arguments = new ProcessArgumentBuilder(_parse)
+                    .WithArgument(command)
+                    .WithArgument(Symbols.Arguments.UsernameArgument)
+                    .WithArgument(Symbols.Arguments.PasswordArgument)
+                    .WithArgument(Symbols.Arguments.IslnPathArgument)
+                    .WithOption(Symbols.Options.ApplicationIdOption, applicationId)
+                    .WithOption(Symbols.Options.AccessToken)
+                    .Build(),
+                RedirectStandardOutput = true,
+            };
+
+            var process = Process.Start(startInfo)!;
+            Console.WriteLine($"{startInfo.FileName} {startInfo.Arguments}");
+            var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+
+            await process.WaitForExitAsync(cancellationToken);
+            if (process.ExitCode == 0)
+            {
+                return;
+            }          
             else
             {
-                string directoryPath = Path.GetDirectoryName(directoy);
-                @namespace = new DirectoryInfo(directoryPath).Name;
+                throw new Exception($"Error running DF CLI {process.ExitCode} (Probably outstanding changes)");
             }
-            StringBuilder content = new();
-            content.AppendLine($@"using System;
-using Intent.Engine;
-using Intent.Modules.Common.VisualStudio;
-
-namespace {@namespace}
-{{
-    public static class NugetPackages
-    {{");
-            foreach (var package in  changedjsonFile.Packages)
-            {
-                if (!string.IsNullOrEmpty(package.Comment))
-                {
-                    content.AppendLine($"        //{package.Comment}");
-                }
-                content.AppendLine($@"
-        public static NugetPackageInfo {ToCSharpIdentifier(package.Name)}(IOutputTarget outputTarget) => new NugetPackageInfo(
-            name: ""{package.Name}"",
-            version: outputTarget.GetMaxNetAppVersion() switch
-            {{");
-                AddVerions(content, package);
-                content.AppendLine($"            }});");
-            }
-            content.AppendLine(@"    }
-}");
-
-            Console.WriteLine("Updating NugetPackages.cs");
-            await File.WriteAllTextAsync(Path.Combine( directoy, "NugetPackages.cs"), content.ToString(), cancellationToken);
         }
 
-        public static string ToCSharpIdentifier(string identifier)
+        private async Task UpdateReleaseNotesAsync(string directory, string releaseVersion, NuGetDependencyConfig changedjsonFile, string releaseNote = "- Improvement: Updated NuGet packages to latest stables.", CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrWhiteSpace(identifier))
-            {
-                return string.Empty;
-            }
-
-            // https://docs.microsoft.com/dotnet/csharp/fundamentals/coding-style/identifier-names
-            // - Identifiers must start with a letter, or _.
-            // - Identifiers may contain Unicode letter characters, decimal digit characters,
-            //   Unicode connecting characters, Unicode combining characters, or Unicode formatting
-            //   characters. For more information on Unicode categories, see the Unicode Category
-            //   Database. You can declare identifiers that match C# keywords by using the @ prefix
-            //   on the identifier. The @ is not part of the identifier name. For example, @if
-            //   declares an identifier named if. These verbatim identifiers are primarily for
-            //   interoperability with identifiers declared in other languages.
-
-            identifier = identifier
-                .Replace("#", "Sharp")
-                .Replace("&", "And");
-
-            var asCharArray = identifier.ToCharArray();
-            for (var i = 0; i < asCharArray.Length; i++)
-            {
-                // Underscore character is allowed
-                if (asCharArray[i] == '_')
-                {
-                    continue;
-                }
-
-                switch (char.GetUnicodeCategory(asCharArray[i]))
-                {
-                    case UnicodeCategory.DecimalDigitNumber:
-                    case UnicodeCategory.LetterNumber:
-                    case UnicodeCategory.LowercaseLetter:
-                    case UnicodeCategory.ModifierLetter:
-                    case UnicodeCategory.OtherLetter:
-                    case UnicodeCategory.TitlecaseLetter:
-                    case UnicodeCategory.UppercaseLetter:
-                    case UnicodeCategory.Format:
-                        break;
-                    case UnicodeCategory.ClosePunctuation:
-                    case UnicodeCategory.ConnectorPunctuation:
-                    case UnicodeCategory.Control:
-                    case UnicodeCategory.CurrencySymbol:
-                    case UnicodeCategory.DashPunctuation:
-                    case UnicodeCategory.EnclosingMark:
-                    case UnicodeCategory.FinalQuotePunctuation:
-                    case UnicodeCategory.InitialQuotePunctuation:
-                    case UnicodeCategory.LineSeparator:
-                    case UnicodeCategory.MathSymbol:
-                    case UnicodeCategory.ModifierSymbol:
-                    case UnicodeCategory.NonSpacingMark:
-                    case UnicodeCategory.OpenPunctuation:
-                    case UnicodeCategory.OtherNotAssigned:
-                    case UnicodeCategory.OtherNumber:
-                    case UnicodeCategory.OtherPunctuation:
-                    case UnicodeCategory.OtherSymbol:
-                    case UnicodeCategory.ParagraphSeparator:
-                    case UnicodeCategory.PrivateUse:
-                    case UnicodeCategory.SpaceSeparator:
-                    case UnicodeCategory.SpacingCombiningMark:
-                    case UnicodeCategory.Surrogate:
-                        asCharArray[i] = ' ';
-                        break;
-                    default:
-                        asCharArray[i] = ' ';
-                        break;
-                }
-            }
-
-            identifier = new string(asCharArray);
-
-            // Replace double spaces
-            while (identifier.Contains("  "))
-            {
-                identifier = identifier.Replace("  ", " ");
-            }
-
-            identifier = string.Concat(identifier
-                .Split(' ')
-                .Where(element => !string.IsNullOrWhiteSpace(element))
-                .Select((element, index) => index == 0
-                    ? element
-                    : element.Pascalize()));
-
-            var leadingUnderscores = string.Empty;
-            for (var i = 0; i < identifier.Length; i++)
-            {
-                if (identifier[i] == '_')
-                {
-                    continue;
-                }
-
-                leadingUnderscores = identifier[..i];
-                identifier = identifier[i..];
-                break;
-            }
-
-            if (!char.IsUpper(identifier[0]))
-            {
-                identifier = $"{char.ToUpperInvariant(identifier[0])}{identifier[1..]}";
-            }
-
-            identifier = $"{leadingUnderscores}{identifier}";
-
-            if (char.IsNumber(identifier[0]))
-            {
-                identifier = $"_{identifier}";
-            }
-
-            return identifier;
-        }
-
-
-        private async Task UpdateReleaseNotesAsync(string directoy, string releaseVersion, NuGetDependencyConfig changedjsonFile, CancellationToken cancellationToken)
-        {
-            var files = Directory.GetFiles(directoy, "release-notes.md");
+            var files = Directory.GetFiles(directory, "release-notes.md");
             if (files.Length != 1)
             {
-                Console.WriteLine($"Can't find `release-notes.md` in : {directoy}");
+                Console.WriteLine($"Can't find `release-notes.md` in : {directory}");
                 return;
             }
             string releaseNotesFileName = files[0];
@@ -308,7 +286,7 @@ namespace {@namespace}
             StringBuilder sb = new StringBuilder();
             bool versionExists = false;
 
-            for(int i = 0; i < lines.Length; i++)
+            for (int i = 0; i < lines.Length; i++)
             {
                 var line = lines[i];
                 if (!versionExists && line.Trim().StartsWith("### Version "))
@@ -324,18 +302,18 @@ namespace {@namespace}
                         }
                         if (lines.Length <= i + 1)
                         {
-                            sb.AppendLine("- Improvement: Updated NuGet packages to latest stables.");
+                            sb.AppendLine($"{releaseNote}");
                         }
-                        else if (lines[i + 1] != "- Improvement: Updated NuGet packages to latest stables.")
+                        else if (lines[i + 1] != releaseNote)
                         {
-                            sb.AppendLine("- Improvement: Updated NuGet packages to latest stables.");
+                            sb.AppendLine($"{releaseNote}");
                         }
                     }
                     else
                     {
                         sb.AppendLine($"### Version {releaseVersion}");
                         sb.AppendLine();
-                        sb.AppendLine("- Improvement: Updated NuGet packages to latest stables.");
+                        sb.AppendLine($"{releaseNote}");
                         sb.AppendLine();
                         sb.AppendLine(line);
                     }
@@ -347,19 +325,12 @@ namespace {@namespace}
                 }
             }
 
-            Console.WriteLine($"Updating realease notes");
+            Console.WriteLine($"Updating release notes");
             await File.WriteAllTextAsync(releaseNotesFileName, sb.ToString(), cancellationToken);
         }
 
-        private async Task<string?> UpdateIModSpecAsync(string directoy, NuGetDependencyConfig changedjsonFile, CancellationToken cancellationToken)
+        private async Task<string?> UpdateIModSpecAsync(string imodspecFile, NuGetDependencyConfig changedjsonFile, CancellationToken cancellationToken = default)
         {
-            var files = Directory.GetFiles(directoy, "*.imodspec");
-            if (files.Length != 1)
-            {
-                Console.WriteLine($"Can't find `imodspec` in : {directoy}");
-                return null;
-            }
-            string imodspecFile = files[0];
             string content = await File.ReadAllTextAsync(imodspecFile, cancellationToken);
 
             XmlDocument doc = new XmlDocument();
@@ -397,6 +368,7 @@ namespace {@namespace}
             {
                 newVersion = new NuGetVersion(version.Major, version.Minor, version.Patch + 1, "pre.0");
             }
+
             versionNode.InnerText = newVersion.ToString();
 
             Console.WriteLine($"Updating .imodpsec : {newVersion.ToString()}");
@@ -411,64 +383,11 @@ namespace {@namespace}
             return releaseVersion.ToString();
         }
 
-        private async Task PersistNugetPackageJsonFileAsync(NuGetDependencyConfig changedjsonFile, CancellationToken cancellationToken)
+
+        private class DummyDomainPublisher : IDomainEventDispatcher
         {
-            Console.WriteLine($"Updating NuGet Dependencies : {changedjsonFile.Filename}");
-            using (FileStream createStream = File.Create(changedjsonFile.Filename))
-            {
-                await JsonSerializer.SerializeAsync(createStream, changedjsonFile, _serialziationOptions, cancellationToken);
-            }
-        }
-
-        /// <summary>
-        /// Return true if package version info changed
-        /// </summary>
-        /// <param name="package"></param>
-        /// <param name="versionInfo"></param>
-        /// <returns></returns>
-        private static bool UpdatePackageInfo(Package package, List<NugetVersionInfo> versionInfo)
-        {
-            var result = package.Versions.CompareCollections(versionInfo, (p, v) => p.Framework == v.GetFrameworkVersion());
-
-            if (!result.HasChanges())
-            {
-                return false;
-            }
-            bool changed = false;
-            foreach (var elementToAdd in result.ToAdd)
-            {
-                package.Versions.Add(new PackageVersion() { Framework = elementToAdd.GetFrameworkVersion(), Version = elementToAdd.PackageVersion.ToString() });
-                changed = true;
-            }
-
-            foreach (var elementToRemove in result.ToRemove)
-            {
-                package.Versions.Remove(elementToRemove);
-                changed = true;
-            }
-
-            foreach (var elementToEdit in result.PossibleEdits)
-            {
-                if (elementToEdit.Original.Locked != true && elementToEdit.Original.Version != elementToEdit.Changed.PackageVersion.ToString())
-                {
-                    elementToEdit.Original.Version = elementToEdit.Changed.PackageVersion.ToString();
-                    changed = true;
-                }
-            }
-            return changed;
-        }
-
-        private static void AddVerions(StringBuilder content, Package package)
-        {
-            foreach (var current in package.Versions)
-            {
-                if (!string.IsNullOrEmpty(current.Comment))
-                {
-                    content.AppendLine($"                //{current.Comment}");
-                }
-                content.AppendLine($"                (>= {current.Framework.Replace(".", ", ")}) => \"{current.Version}\",");
-            }
-            content.AppendLine($"                _ => throw new Exception($\"Unsupported Framework `{{outputTarget.GetMaxNetAppVersion().Major}}` for NuGet package '{package.Name}'\")");
+            public Task<TResponse> Request<TResponse>(IDomainRequest<TResponse> request) => throw new NotSupportedException();
+            public Task Publish(IDomainEvent @event) => Task.CompletedTask;
         }
     }
 }

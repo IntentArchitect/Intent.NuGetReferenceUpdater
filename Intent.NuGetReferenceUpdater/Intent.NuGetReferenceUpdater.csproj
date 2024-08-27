@@ -27,4 +27,8 @@
     <PackageReference Include="NuGet.Protocol" Version="6.10.1" />
 
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Intent\Intent.IntentArchitect\IntentArchitect.ElectronClient\Intent.IArchitect.Agent.Persistence\Intent.IArchitect.Agent.Persistence.csproj" />
+  </ItemGroup>
 </Project>

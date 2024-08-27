@@ -5,6 +5,10 @@ VisualStudioVersion = 17.8.34322.80
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Intent.NuGetReferenceUpdater", "Intent.NuGetReferenceUpdater\Intent.NuGetReferenceUpdater.csproj", "{00E3F308-7389-44B1-9746-A72CC9E9BB47}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "External", "External", "{5D305D65-F24D-4FB6-A5AA-6A62179125E6}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Intent.IArchitect.Agent.Persistence", "..\Intent\Intent.IntentArchitect\IntentArchitect.ElectronClient\Intent.IArchitect.Agent.Persistence\Intent.IArchitect.Agent.Persistence.csproj", "{94B93523-91DF-4BD2-89E0-7D2805615DA2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,9 +19,16 @@ Global
 		{00E3F308-7389-44B1-9746-A72CC9E9BB47}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{00E3F308-7389-44B1-9746-A72CC9E9BB47}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{00E3F308-7389-44B1-9746-A72CC9E9BB47}.Release|Any CPU.Build.0 = Release|Any CPU
+		{94B93523-91DF-4BD2-89E0-7D2805615DA2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{94B93523-91DF-4BD2-89E0-7D2805615DA2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{94B93523-91DF-4BD2-89E0-7D2805615DA2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{94B93523-91DF-4BD2-89E0-7D2805615DA2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{94B93523-91DF-4BD2-89E0-7D2805615DA2} = {5D305D65-F24D-4FB6-A5AA-6A62179125E6}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {6C2FFF0C-39CE-49CE-9CFC-446E984BB664}
