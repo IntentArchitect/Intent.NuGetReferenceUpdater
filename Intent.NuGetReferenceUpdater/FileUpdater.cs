@@ -16,8 +16,6 @@ using System.Xml;
 using Intent.IArchitect.Agent.Persistence.Model;
 using Intent.IArchitect.Common.Publishing;
 using Serilog;
-
-using static Intent.NuGetReferenceUpdater.NuGetApi;
 using static System.Net.Mime.MediaTypeNames;
 using System.CommandLine.Parsing;
 using System.Diagnostics;
@@ -25,6 +23,8 @@ using System.IO;
 using NuGet.Frameworks;
 using System.Xml.Linq;
 using Intent.IArchitect.Agent.Persistence.Model.Common;
+using static Intent.Modules.ModuleBuilder.CSharp.Tasks.NuGetApi;
+using Intent.Modules.ModuleBuilder.CSharp.Tasks;
 
 namespace Intent.NuGetReferenceUpdater
 {
@@ -37,8 +37,10 @@ namespace Intent.NuGetReferenceUpdater
         private const string PackageVersionSettingsStereoTypeId = "7af88c37-ce54-49fc-b577-bde869c23462";
         private const string PackageElementTypeId = "f747cc37-29ee-488a-8dbe-755e856a842d";
         private const string PackageVersionElementTypeId = "231f8cf8-517b-4801-9682-991d22f4e662";
-        private const string PackageSettingsStereoTypeId = "265221a5-779c-46c9-a367-8b07b435803b";       
+        private const string PackageSettingsStereoTypeId = "265221a5-779c-46c9-a367-8b07b435803b";
+        private const string NuGetDependecnyElementTypeId = "3097322a-a058-4058-beed-4fcd6272f61d";       
 
+        
         public FileUpdater(
             ParseResult parse,
             string userName,
@@ -165,10 +167,12 @@ namespace Intent.NuGetReferenceUpdater
                         {
                             var newVersion = CreatePackageVersion(child, x);
                             child.AddElement(newVersion);
+                            UpdatePackageDependencies(newVersion, x);
                         }
                         else
                         {
                             updateDetails.Element.Name = updateDetails.PackageVersion;
+                            UpdatePackageDependencies(updateDetails.Element, x);
                         }
                     }
                 }
@@ -186,6 +190,24 @@ namespace Intent.NuGetReferenceUpdater
                     }
 
                 }
+            }
+        }
+
+        private void UpdatePackageDependencies(ElementPersistable element, NugetVersionInfo x)
+        {
+            element.ChildElements.Clear();
+            foreach (var dependency in x.Dependencies)
+            {
+                var dependencyElement = new ElementPersistable()
+                {
+                    Id = Guid.NewGuid().ToString().ToLower(),
+                    SpecializationType = "NuGet Dependency",
+                    SpecializationTypeId = NuGetDependecnyElementTypeId,
+                    Name = dependency.PackageName,
+                    ParentFolderId = element.Id,
+                    Value = dependency.Version.MinVersion?.ToString()
+                };
+                element.ChildElements.Add(dependencyElement);
             }
         }
 

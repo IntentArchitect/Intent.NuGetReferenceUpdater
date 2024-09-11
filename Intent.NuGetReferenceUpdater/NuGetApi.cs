@@ -1,22 +1,28 @@
-﻿using Intent.Utils;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using Intent.Utils;
 using NuGet.Common;
 using NuGet.Configuration;
 using NuGet.Frameworks;
 using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace Intent.NuGetReferenceUpdater
+namespace Intent.Modules.ModuleBuilder.CSharp.Tasks
 {
+    /// <summary>
+    /// This is a Copy paste of Intent.Modules.ModuleBuilder.CSharp.Tasks.NuGetApo with a oneliner change + this comment
+    /// </summary>
     internal class NuGetApi
     {
 
         private static List<NuGetFramework> _frameworks = new List<NuGetFramework>
             {
+                NuGetFramework.Parse(".NETStandard,Version=v2.0"),
+                NuGetFramework.Parse(".NETStandard,Version=v2.1"),
                 NuGetFramework.Parse(".NETCoreApp,Version=v6.0"),
                 NuGetFramework.Parse(".NETCoreApp,Version=v7.0"),
                 NuGetFramework.Parse(".NETCoreApp,Version=v8.0"),
@@ -26,7 +32,6 @@ namespace Intent.NuGetReferenceUpdater
         private static List<NuGetFramework> _fallBackFrameworks = new List<NuGetFramework>
             {
                 NuGetFramework.Parse("Any,Version=v0.0"),
-                NuGetFramework.Parse(".NETStandard,Version=v2.0")
             };
 
 
@@ -67,7 +72,8 @@ namespace Intent.NuGetReferenceUpdater
 
                 if (latestPackage != null)
                 {
-                    result.Add(new NugetVersionInfo(framework, latestPackage.Identity.Version));
+                    var dependencies = latestPackage.DependencySets.FirstOrDefault(d => d.TargetFramework == framework);
+                    result.Add(new NugetVersionInfo(framework, latestPackage.Identity.Version, dependencies.Packages.Select(p => new NugetDependencyInfo(p.Id, p.VersionRange)).ToList()));
                 }
             }
             return result;
@@ -75,14 +81,30 @@ namespace Intent.NuGetReferenceUpdater
 
         internal class NugetVersionInfo
         {
-            public NugetVersionInfo(NuGetFramework frameworkVersion, NuGetVersion packageVersion)
+            public NugetVersionInfo(NuGetFramework frameworkVersion, NuGetVersion packageVersion, List<NugetDependencyInfo> dependencies)
             {
                 FrameworkVersion = frameworkVersion;
                 PackageVersion = packageVersion;
+                Dependencies = dependencies;
             }
 
             public NuGetFramework FrameworkVersion { get; }
             public NuGetVersion PackageVersion { get; }
+
+            public List<NugetDependencyInfo> Dependencies { get; }
+
+        }
+
+        internal class NugetDependencyInfo
+        {
+            public NugetDependencyInfo(string packageName, VersionRange version)
+            {
+                PackageName = packageName;
+                Version = version;
+            }
+
+            public string PackageName { get; }
+            public VersionRange Version { get; }
 
         }
     }
