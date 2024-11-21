@@ -52,7 +52,7 @@ namespace Intent.NuGetReferenceUpdater
             _islnfileName = islnfileName;
             _nuGetCache = new Dictionary<string, List<NugetVersionInfo>>();
         }
-        public async Task UpdateFilesAsync(string resumeid = null, CancellationToken cancellationToken = default)
+        public async Task UpdateFilesAsync(string? resumeId = null, CancellationToken cancellationToken = default)
         {
             DomainPublisher.Set(new DummyDomainPublisher());
 
@@ -74,7 +74,7 @@ namespace Intent.NuGetReferenceUpdater
 
             }
 
-            await UpdateApplicationNuGetPackages(islnName, resumeid, cancellationToken);
+            await UpdateApplicationNuGetPackages(islnName, resumeId, cancellationToken);
         }
 
         private async Task UpdateApplicationNuGetPackages(string? islnName, string? resumeId, CancellationToken cancellationToken = default)
@@ -131,13 +131,14 @@ namespace Intent.NuGetReferenceUpdater
                     continue;
                 }
 
+                Console.WriteLine($"{application.Name}({application.Id})" );
                 Console.WriteLine("Checking there is no pending changes");
                 await RunSFCLI("ensure-no-outstanding-changes", application.Id, cancellationToken);
 
                 bool changes = false;
                 foreach (var child in packages)
                 {
-                    if (child == null) continue; 
+                    if (child == null) continue;
 
                     //Ignore Locked Packages
                     if (child.Stereotypes.FirstOrDefault(s => s.DefinitionId == PackageSettingsStereoTypeId)?.Properties.FirstOrDefault(p => p.Name == "Locked")?.Value == "true")
@@ -155,7 +156,7 @@ namespace Intent.NuGetReferenceUpdater
                     {
                         var updateDetails = GetVersionDetails(child.ChildElements, x);
 
-                        //Version already exists and (is locked or is the current lastest version)
+                        //Version already exists and (is locked or is the current latest version)
                         if (updateDetails != null && (updateDetails.Locked || updateDetails.Element.Name == updateDetails.PackageVersion))
                         {
                             continue;
@@ -175,6 +176,19 @@ namespace Intent.NuGetReferenceUpdater
                             UpdatePackageDependencies(updateDetails.Element, x);
                         }
                     }
+                    var toRemoves = new List<ElementPersistable>();
+                    foreach (var element in child.ChildElements)
+                    {                        
+                        if (!HasNugetPackage(element, nugetDetails) && !(element.Stereotypes.FirstOrDefault(s => s.DefinitionId == PackageVersionSettingsStereoTypeId)?.Properties.FirstOrDefault(p => p.Name == "Locked")?.Value == "true"))
+                        {
+                            toRemoves.Add(element);
+                        }
+                    }
+                    foreach (var toRemove in toRemoves)
+                    {
+                        changes = true;
+                        toRemove.Delete();
+                    }
                 }
                 if (changes)
                 {
@@ -191,6 +205,22 @@ namespace Intent.NuGetReferenceUpdater
 
                 }
             }
+        }
+
+        private bool HasNugetPackage(ElementPersistable element, List<NugetVersionInfo> nugetDetails)
+        {
+            var framework = element.Stereotypes.FirstOrDefault(s => s.DefinitionId == PackageVersionSettingsStereoTypeId)?.Properties.FirstOrDefault(p => p.Name == "Minimum Target Framework")?.Value;
+            return nugetDetails.Any(x => x.FrameworkVersion.DotNetFrameworkName == framework);
+        }
+
+        private VersionDetails? GetVersionDetails(IEnumerable<ElementPersistable> children, NugetVersionInfo nugetInfo)
+        {
+            var versionElement = children.FirstOrDefault(x => x.SpecializationTypeId == PackageVersionElementTypeId &&
+                x.Stereotypes.FirstOrDefault(s => s.DefinitionId == PackageVersionSettingsStereoTypeId)?.Properties.FirstOrDefault(p => p.Name == "Minimum Target Framework")?.Value == nugetInfo.FrameworkVersion.DotNetFrameworkName);
+            if (versionElement is null)
+                return null;
+            bool locked = versionElement.Stereotypes.FirstOrDefault(s => s.DefinitionId == PackageVersionSettingsStereoTypeId)?.Properties.FirstOrDefault(p => p.Name == "Locked")?.Value == "true";
+            return new VersionDetails(nugetInfo.PackageVersion.ToString(), locked, versionElement);
         }
 
         private void UpdatePackageDependencies(ElementPersistable element, NugetVersionInfo x)
@@ -231,14 +261,14 @@ namespace Intent.NuGetReferenceUpdater
                     {
                         new StereotypePropertyPersistable()
                         {
-                            Id = "b01cea92-0ca1-4dbe-acab-d0f52b39e003",
+                            DefinitionId = "b01cea92-0ca1-4dbe-acab-d0f52b39e003",
                             Name = "Minimum Target Framework",
                             Value = x.FrameworkVersion.DotNetFrameworkName,
                             IsActive = true,
                         },
                         new StereotypePropertyPersistable()
                         {
-                            Id = "d00692b1-6d17-4f1e-9386-a1d0d3ab7b57",
+                            DefinitionId = "d00692b1-6d17-4f1e-9386-a1d0d3ab7b57",
                             Name = "Locked",
                             Value = "false",
                             IsActive = true,
@@ -248,16 +278,6 @@ namespace Intent.NuGetReferenceUpdater
 
             newVersion.Stereotypes.Add(packageVersionSettingsStereotype);
             return newVersion;
-        }
-
-        private VersionDetails? GetVersionDetails(IEnumerable<ElementPersistable> children, NugetVersionInfo nugetInfo)
-        {
-            var versionElement = children.FirstOrDefault(x => x.SpecializationTypeId == PackageVersionElementTypeId && 
-                x.Stereotypes.FirstOrDefault(s => s.DefinitionId == PackageVersionSettingsStereoTypeId)?.Properties.FirstOrDefault(p => p.Name == "Minimum Target Framework")?.Value == nugetInfo.FrameworkVersion.DotNetFrameworkName);
-            if (versionElement is null)
-                return null;
-            bool locked = versionElement.Stereotypes.FirstOrDefault(s => s.DefinitionId == PackageVersionSettingsStereoTypeId)?.Properties.FirstOrDefault(p => p.Name == "Locked")?.Value == "true";
-            return new VersionDetails(nugetInfo.PackageVersion.ToString(), locked, versionElement);
         }
 
         private record VersionDetails(string PackageVersion, bool Locked, ElementPersistable Element );

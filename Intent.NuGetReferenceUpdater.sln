@@ -9,6 +9,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "External", "External", "{5D
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Intent.IArchitect.Agent.Persistence", "..\Intent\Intent.IntentArchitect\IntentArchitect.ElectronClient\Intent.IArchitect.Agent.Persistence\Intent.IArchitect.Agent.Persistence.csproj", "{94B93523-91DF-4BD2-89E0-7D2805615DA2}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Intent.IArchitect.Common", "..\Intent\Intent.IntentArchitect\IntentArchitect.Seedwork\Intent.IArchitect.Common\Intent.IArchitect.Common.csproj", "{4654C6FA-1332-42FE-8609-010429C2CDB8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -23,12 +25,17 @@ Global
 		{94B93523-91DF-4BD2-89E0-7D2805615DA2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{94B93523-91DF-4BD2-89E0-7D2805615DA2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{94B93523-91DF-4BD2-89E0-7D2805615DA2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4654C6FA-1332-42FE-8609-010429C2CDB8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4654C6FA-1332-42FE-8609-010429C2CDB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4654C6FA-1332-42FE-8609-010429C2CDB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4654C6FA-1332-42FE-8609-010429C2CDB8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{94B93523-91DF-4BD2-89E0-7D2805615DA2} = {5D305D65-F24D-4FB6-A5AA-6A62179125E6}
+		{4654C6FA-1332-42FE-8609-010429C2CDB8} = {5D305D65-F24D-4FB6-A5AA-6A62179125E6}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {6C2FFF0C-39CE-49CE-9CFC-446E984BB664}
