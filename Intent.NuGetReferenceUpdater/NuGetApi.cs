@@ -55,6 +55,10 @@ namespace Intent.Modules.ModuleBuilder.CSharp.Tasks
                 //Try pre-releases
                 searchMetadata = await packageMetadataResource.GetMetadataAsync(packageName, includePrerelease: true, includeUnlisted: false, new SourceCacheContext(), NullLogger.Instance, CancellationToken.None);
             }
+            if (!searchMetadata.Any())
+            {
+                return new List<NugetVersionInfo>();
+            }
 
             var versionsForFrameworks = GetLatestVersionPerFramework(searchMetadata, _frameworks);
 

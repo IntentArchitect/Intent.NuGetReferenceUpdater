@@ -2,7 +2,7 @@
   "profiles": {
     "Intent.NuGetReferenceUpdater": {
       "commandName": "Project",
-      "commandLineArgs": "joel.turner@intentarchitect.com *password* \"C:\\Dev\\Intent.Modules.NET\\Modules\\Intent.Modules.NET.isln\""
+      "commandLineArgs": "joel.turner@intentarchitect.com *password* \"C:\\Dev\\Intent.Modules.NET\\Modules\\Intent.Modules.NET.isln\" "
     }
   }
 }
